@@ -16,6 +16,8 @@
 package org.kstore.impl;
 
 import org.kstore.Device;
+import generic.cache.io.CachedInputStream;
+import generic.cache.io.CachedOutputStream;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
@@ -86,6 +88,7 @@ public class FileSystemDevice implements Device {
 
 	@Override
 	public InputStream getInputStream(String path) throws IOException {
+		if (Device.useStreamCache) return new CachedInputStream(path, () -> new FileInputStream(path));
 		return new FileInputStream(path);
 	}
 
@@ -95,7 +98,9 @@ public class FileSystemDevice implements Device {
 		if (!dir.exists()) {
 			dir.mkdirs();
 		}
-		return new FileOutputStream(path, append);
+		OutputStream os = new FileOutputStream(path, append);
+		if (Device.useStreamCache) return new CachedOutputStream(path, os);
+		return os;
 	}
 
 	@Override

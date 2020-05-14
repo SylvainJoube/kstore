@@ -26,6 +26,9 @@ import java.io.OutputStream;
  */
 public interface Device {
 
+	/** Define whether or not we should use an Out/InputStreamCached rather than a classical Out/InputStream */
+	public static final boolean useStreamCache = true;
+	
 	/**
 	 * Opens the given path for reading, with the given compression scheme.
 	 *
