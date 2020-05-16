@@ -3,6 +3,7 @@ package generic.cache.io;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /** 
+ *  Not intended for end-used, this is a package-private class.</br>
  *  Local debug, very handy for me !
  *  
  *  @author Sylvain Joube

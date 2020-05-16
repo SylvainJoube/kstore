@@ -4,8 +4,7 @@ package generic.cache.io;
 /** 
  * Not intended for end-used, this is a package-private class.</br>
  * 
- * A simple chunk of data owned by an instance of CISStorageSys.
- * 
+ * A simple data chunk owned by an instance of CISStorageSys.
  * 
  * @author Sylvian Joube
  * @version 2020-05 v1
@@ -37,7 +36,5 @@ class CISStorageChunkSys {
 	public int length() {
 		return blockData.length;
 	}
-	
-	
 	
 }

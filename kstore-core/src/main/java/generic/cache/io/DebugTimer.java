@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 
+ * Not intended for end-used, this is a package-private class.</br>
  * Timer, used for debug and benchmak purposes.
  * 
  * @author Sylvain Joube

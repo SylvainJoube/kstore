@@ -17,9 +17,9 @@ import java.io.IOException;
  * CachedInputStream extends FilterInputStream, only for the functions names and does not use
  * the "in" variable of FilterInputStream.</br>
  * 
- * This class is not designed to be used by multiples threads at the same time. If you need to access the same ressource,
- * but from another thread, consider creating another CachedInputStream. The underlying implementation,
- * howerever, is thread-safe.
+ * An instance of this class is not designed to be used by multiples threads at the same time.
+ * If you need to access the same ressource, but from another thread,
+ * consider creating another CachedInputStream. The underlying implementation, howerever, is thread-safe.
  * 
  * @author Sylvain Joube
  * @version 2020-05 v1
@@ -42,14 +42,16 @@ public class CachedInputStream extends FilterInputStream {
 	protected static boolean testOnly_sleepOnLoadAsync = false; // <- /!\ ON PRODUCTION, MUST BE FALSE /!\ <-
 	
 	/** Creates a new CacheInputStream. Searches for the cache associated with the uniqueURI.
-	 *  If no cache is found, the optionalConstructor is called and the InputStream is created.
-	 *  </br>
-	 *  Currently, the cache loads the whole InputStream.
-	 *  Future devlopments may see an asynchronous load, making all the queries on the loaded part immediate,
-	 *  only making the other queries wait till the end.
+	 *  If no cache is found, the optionalConstructor is called and the InputStream is created.</br>
 	 *  
-	 * @param uniqueURI
-	 * @param optionalConstructor
+	 *  Blocks until the URI can be taken. (supports many readers at diffrent offsets, but only one writer at a time).</br>
+	 *  
+	 *  The cache loads the whole InputStream, asychronously.
+	 *  All the queries on the loaded part are immediate,  the other queries waits until enough of the file is loaded.
+	 *  
+	 * @param uniqueURI  The URI (Uniform ressource Ientifier) associated with this file.
+	 *                   It should be unique, and only refer to this file.
+	 * @param optionalConstructor  If no cache is found, the optionalConstructor is called and the InputStream is created.
 	 * @throws IOException
 	 */
 	public CachedInputStream(String uniqueURI, OptionalInputStreamConstructor optionalConstructor) throws IOException {
@@ -87,7 +89,13 @@ public class CachedInputStream extends FilterInputStream {
 		return (o == this);
 	}
 	
-	
+    /** Closes this input stream and releases any system resources associated with the stream.
+     *  Wakes any thread waiting on CachedOutputStream assoiated with the same URI as this cache. 
+     *
+     * @exception  IOException  if an I/O error occurs.
+     * @see        java.io.FilterInputStream#in
+     */
+	@Override
 	public void close() {
 		cache.closeInstance();
 	}
@@ -110,7 +118,7 @@ public class CachedInputStream extends FilterInputStream {
 		return cache.markSupported();
 	}
 	
-	/** Mostly for debug, to check many CachedInputStream wth the same URI points to the same
+	/** Mostly for debug, to check than many CachedInputStream with the same URI points to the same
 	 *  underlying cache.
 	 *  @return
 	 */
@@ -126,12 +134,12 @@ public class CachedInputStream extends FilterInputStream {
 		testOnly_sleepOnLoadAsync = true;
 	}
 	
-	/** Leaves test mode for asynchronous load and reads.
-	 */
+	/** Leaves test mode for asynchronous load and reads. */
 	public static void leaveTestAsyncMode() {
 		testOnly_sleepOnLoadAsync = false;
 	}
 	
+	/** Gets the number of caches pointing to the same opened URI */
 	public int getUnderlyingRefCount() {
 		return cache.getRefCount();
 	}

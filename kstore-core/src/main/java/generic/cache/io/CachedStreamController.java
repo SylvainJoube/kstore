@@ -2,6 +2,9 @@ package generic.cache.io;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
+import java.nio.file.FileAlreadyExistsException;
+import java.util.Deque;
 import java.util.LinkedList;
 
 
@@ -27,15 +30,15 @@ class CachedStreamController {
 	static protected Object lock = new Object();
 	
 	// For future LRU
-	static protected volatile LinkedList<CachedInputStreamSys> readers = new LinkedList<>();
-	static protected volatile LinkedList<CachedOutputStream> writers = new LinkedList<>();
+	static protected volatile Deque<CachedInputStreamSys> readers = new LinkedList<>();
+	static protected volatile Deque<CachedOutputStream> writers = new LinkedList<>();
 
 	// readers waiting to be closed
 	static protected volatile LinkedList<String> closingURI = new LinkedList<>();
 	
-	/**
-	 *  @param uri
-	 *  @return  true is the URI is not yet closed (meaning in the closingURI list)
+	/** Returne whether a given URI is being closed (meaning stinn not available for reuse)
+	 *  @param uri  unique Uniform Ressource Identifier for the file
+	 *  @return  true if the URI is not yet closed (meaning it's still in the closingURI list)
 	 */
 	static protected boolean isClosingURI(String uri) {
 		synchronized(lock) {
@@ -49,6 +52,12 @@ class CachedStreamController {
 		}
 	}
 	
+	/** Creates or finds an  CachedInputStreamsSys. Blocks until the cache can be retreived/created.
+	 *  @param uniqueURI  unique Uniform Ressource Identifier for the file
+	 *  @param optionalConstructor  constructor for the underlying InputStream, only created if no reference to it already exists.
+	 *  @return  a refecence to an already existing cache, or a new cache. The returned cache always is in the local (readers) list.
+	 *  @throws IOException
+	 */
 	static protected CachedInputStreamSys createOrFindInput(String uniqueURI, OptionalInputStreamConstructor optionalConstructor) throws IOException {
 		
 		synchronized(lock) {
@@ -69,7 +78,7 @@ class CachedStreamController {
 			if (cache == null) {
 				cache = new CachedInputStreamSys(uniqueURI, optionalConstructor);
 				readers.add(cache);
-				//DebugLog.info("new xache = " + cache);
+				//DebugLog.info("new cache = " + cache);
 			}
 			cache.refCount.incrementAndGet();
 			return cache;
@@ -77,8 +86,8 @@ class CachedStreamController {
 	}
 	
 	/** Get the cache associated with uniqueID or null if no cache could be found.
-	 * @param uniqueID  the uniqueID of the cache (the ressource URI (Uniform Ressource Identifier)
-	 *                  as a file path on local machine, or path on s3, HDFS, ...).
+	 * @param uniqueURI  the uniqueID of the cache (the ressource URI (Uniform Ressource Identifier)
+	 *                   as a file path on local machine, or path on s3, HDFS, ...).
 	 * @return  the associated cache, or null if none could be found.
 	 */
 	static protected CachedInputStreamSys findInput(String uniqueURI) {
@@ -94,6 +103,11 @@ class CachedStreamController {
 		return null;
 	}
 	
+	
+	/** Finds the CachedOutputStream associated with the URI, if any.
+	 * @param uniqueURI  unique Uniform Ressource Identifier for the file
+	 * @return  the cache if already in the local (writers) list, null if does not exist.
+	 */
 	static protected CachedOutputStream findOutput(String uniqueURI) {
 		synchronized(lock) {
 			for (CachedOutputStream cache : writers) {
@@ -124,6 +138,12 @@ class CachedStreamController {
 		}
 	}
 	
+	/** Unregisters the CachedOutputStream, meaning removing it from the local (writers) list
+	 *  and wakes up all threads currently waiting on any fonction of CachedStreamCotroller.
+	 *  Only a thread waiting to acquire the URI associates with the cache will be able to proceed.
+	 *  @param cache  the cache to be removed from the local (writers) list.
+	 *  @return  true if the cache was present, false otherwise.
+	 */
 	static protected boolean unregisterOutput(CachedOutputStream cache) {
 		synchronized(lock) {
 			boolean success = writers.remove(cache);
@@ -147,16 +167,16 @@ class CachedStreamController {
 			} else {
 				// Cache not found, this is not supposed to happen.
 				// Print something, mostly for debug.
-				System.err.println("InputStreamCachesHandler : updateLastUsed  cache not found.");
+				DebugLog.error("InputStreamCachesHandler : updateLastUsed  cache not found.");
 			}
 		}
 	}
 	
 	/** Waits until I can have a write access on cache.uniqueURI
-	 *  FIFO is not guaranteed, but anyway, a stream should not be used concurrently (I think),
+	 *  FIFO is not guaranteed, but anyway, a writer stream should not be used concurrently with a reader (I think),
 	 *  this is just a protection.
-	 * @param cache
-	 * @throws IOException
+	 *  @param cache  the cache we'd like to register and use.
+	 *  @throws IOException  if was unable to obtain the uniqueURI passed
 	 */
 	static protected void waitForOutputRights(CachedOutputStream cache) throws IOException { // String uniqueURI
 
@@ -179,22 +199,24 @@ class CachedStreamController {
 						unregisterInput(rd); // unregisters it : no reader will be able to access it.
 						closeRd = true;
 						stopLoop = true; // not useful
-						if (findOutput(uri) != null) { // should NOT happen
-							DebugLog.error("A writer exists at the same time than a reader ! Critical access error.");
+						if (findOutput(uri) != null) { // SHOULD NOT HAPPEN
+							String m = "A writer exists at the same time than a reader ! Critical access error.";
+							DebugLog.error(m);
+							throw new FileAlreadyExistsException(m);
 						}
 						break;
 					} else {
 						if (rd.getRefCount() < 0) { // should be positive or null, never negative.
 							String m = "Critical : refCount negative = " + rd.getRefCount();
 							DebugLog.error(m);
-							throw new FileNotFoundException(m);
+							throw new AccessDeniedException(m);
 						}
 						// refCount not null, waits.
 						try {
 							lock.wait();
 						} catch (InterruptedException e) {
 							e.printStackTrace();
-							throw new FileNotFoundException("Critical problem while waiting for the writer to release lock.");
+							throw new AccessDeniedException("Critical problem while waiting for the writer to release lock.");
 						}
 					}
 				}
@@ -209,7 +231,7 @@ class CachedStreamController {
 					lock.wait();
 				} catch (InterruptedException e) {
 					e.printStackTrace();
-					throw new FileNotFoundException("Critical problem while waiting for the writer to release lock.");
+					throw new AccessDeniedException("Critical problem while waiting for the writer to release lock.");
 				}
 				
 			} while(! stopLoop);

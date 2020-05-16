@@ -79,11 +79,10 @@ class CISStorageSys {
 		} catch (IOException e) {
 			DebugLog.error("error on optionalConstructor.create(). " + e);
 			finishedLoading.set(true);
-			return;
+			throw e;
 		}
-
-		//int avail = in.available();
 		
+		// Asychronous loading
 		loadingThread = new Thread( () -> {
 			loadRessourceBlocking(in);
 			protectMemOverload.release();
@@ -91,23 +90,6 @@ class CISStorageSys {
 		});
 		
 		loadingThread.start();
-		
-		//DebugLog.info("avail = " + avail);
-		
-		// Waits to retreive information
-		/*synchronized (this) {
-			if (avail != 0) {
-				try {
-					if (this.length() == 0) {
-						//DebugLog.info("waits... ");
-						this.wait();
-						//DebugLog.info("woken up !");
-					}
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
-			}
-		}*/
 	}
 	
 	/** Same as loadRessourceBlocking(InputStream in).
